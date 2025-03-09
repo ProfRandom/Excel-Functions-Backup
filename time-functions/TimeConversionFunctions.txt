@@ -57,13 +57,13 @@ EXPTIMET = LAMBDA(unit, value, [includeZero], [decimalPlaces],
         d, INT(MOD(totalSeconds, 31557600) / 86400),
         h, INT(MOD(totalSeconds, 86400) / 3600),
         m, INT(MOD(totalSeconds, 3600) / 60),
-        s, ROUND(MOD(totalSeconds, 60), decimalPlaces),  // Round to user-defined decimals
+        s, (totalSeconds - trunc(totalSeconds)) * 60,
 
         formattedY, y & "y",
         formattedD, d & "d",
         formattedH, h & "h",
         formattedM, m & "m",
-        formattedS, s & "s",  // Pass rounded value directly (future-proofing!)
+        formattedS, int(s*10000)/10000 & "s",  // Pass rounded value directly (future-proofing!)
 
         formatText, TEXTJOIN(" ", TRUE,
             IF(includeZero + y > 0, formattedY, ""),
@@ -78,11 +78,8 @@ EXPTIMET = LAMBDA(unit, value, [includeZero], [decimalPlaces],
 );
 
 
-EXPTIMEF = LAMBDA(unit, value, [includeZero], [decimalPlaces],
+EXPTIMEF = LAMBDA(unit, value,
     LET(
-        includeZero, IF(ISOMITTED(includeZero), TRUE, includeZero),
-        decimalPlaces, IF(ISOMITTED(decimalPlaces), 3, decimalPlaces),
-        unit, UPPER(unit),
         factor, SWITCH(unit, 
             "Y", 31557600, 
             "D", 86400, 
@@ -91,26 +88,37 @@ EXPTIMEF = LAMBDA(unit, value, [includeZero], [decimalPlaces],
             "S", 1, 
             NA()),
         totalSeconds, value * factor,
-        y, INT(totalSeconds / 31557600),
-        d, INT(MOD(totalSeconds, 31557600) / 86400),
-        h, INT(MOD(totalSeconds, 86400) / 3600),
-        m, INT(MOD(totalSeconds, 3600) / 60),
-        s, ROUND(MOD(totalSeconds, 60), decimalPlaces),  // Round to user-defined decimals
 
-        formattedY, TEXT(y, "00"),
-        formattedD, TEXT(d, "00"),
-        formattedH, TEXT(h, "00"),
-        formattedM, TEXT(m, "00"),
-        formattedS, s, // Pass rounded value directly
+        // Compute raw units
+        //rawS, totalSeconds - INT(totalSeconds / 60) * 60,
+        rawS, (totalSeconds - trunc(totalSeconds)) * 60,
+        totalMinutes, INT(totalSeconds / 60),
+        rawM, MOD(totalMinutes, 60),
+        totalHours, INT(totalMinutes / 60),
+        rawH, MOD(totalHours, 24),
+        totalDays, INT(totalHours / 24),
+        rawD, MOD(totalDays, 365.25),
+        rawY, INT(totalDays / 365.25),
 
-        formatNumeric, TEXTJOIN(":", TRUE,
-            IF(includeZero + y > 0, formattedY, ""),
-            IF(includeZero + d > 0, formattedD, ""),
-            IF(includeZero + h > 0, formattedH, ""),
-            IF(includeZero + m > 0, formattedM, ""),
-            formattedS
-        ),
+        // Handle carryover for minutes
+        carryH, IF(rawM >= 60, 1, 0),
+        m, IF(rawM >= 60, 0, rawM),
 
-        IFERROR(formatNumeric, "Invalid Input")
+        // Handle carryover for hours
+        carryD, IF(rawH + carryH >= 24, 1, 0),
+        h, IF(rawH + carryH >= 24, 0, rawH + carryH),
+
+        // Handle carryover for days
+        carryY, IF(rawD + carryD >= 365.25, 1, 0),
+        d, IF(rawD + carryD >= 365.25, 0, rawD + carryD),
+        y, rawY + carryY,
+
+        // Format output
+        TEXT(y, "00") & ":" & TEXT(d, "000") & ":" & TEXT(h, "00") & ":" & TEXT(m, "00") & ":" & int(rawS*10000)/10000
+        //rawS
     )
 );
+
+
+
+
